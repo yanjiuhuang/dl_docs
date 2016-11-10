@@ -89,8 +89,6 @@ $$\hat{y}=\sigma(w^Th+b)$$
 
 这里我们先跳过$x$来直接讨论如何使用$z$来定义关于$y$的概率分布。Sigmoid可以使用一个没有经过规范化的分布$\hat{P}(y)$，也就是这个分布的概率总和不为1。为了实现规范化，可以通过除以一个常数。
 
-
-
 ##### 针对Bernoulli输出分布的Sigmoid单元
 许多任务要求对二进制的值进行预测，例如二分类问题。最大似然方法就是用来定义条件于$x$的$y$Bernoulli分布。一个Bernoulli分布可以被单一的数来定义。神经网络只需要用来预测$P=(y=1 | x)$。而这个数的取值就在范围$[0, 1]$之间。  
 
@@ -100,14 +98,45 @@ $$P(y=1|x) = max\{0, min\{1, w^Th + b\}\}$$
 
 所以我们需要采用其他的办法来确保即使模型产生了错误的值，它总是有较好的梯度。而这个办法就是使用结合了最大似然的Sigmoid输出单元。
 
-
-
 一个Sigmoid输出单元采用如下方式来定义
 $$\hat{y}=\sigma(w^Th+b)$$
 其中$\sigma$就是logistic sigmoid函数：$\sigma(x)=\frac{1}{1+e^{-x}}$。  
 我们可以认为sigmoid输出单元有两个组成部分。首先它使用了一个线性层来计算$z=w^Th + b$。然后它使用了sigmoid激活函数将$z$转换成一个概率值。  
 
-这里我们先跳过$x$来直接讨论如何使用$z$来定义关于$y$的概率分布。Sigmoid可以使用一个没有经过规范化的分布$\hat{P}(y)$，也就是这个分布的概率总和不为1。为了实现规范化，可以通过除以一个常数。
+这里我们先跳过$x$来直接讨论如何使用$z$来定义关于$y$的概率分布。Sigmoid可以使用一个没有经过规范化的分布$\hat{P}(y)$，也就是这个分布的概率总和不为1。为了实现规范化，可以通过除以一个常数。如果我们从假定非规范化概率对于$y$和$x$是线性的，那么我们就可以通过对其指数化来获得非规范化概率。然后我们就会发现规范化可以产生一个基于Sigmoid化的变量$z$的Bernoulli分布：  
+$$\log \hat{P}(y)=yz$$
+$$\hat{P} = exp(yz)$$
+$$P(y) = \frac{exp(yz)}{\sum_{y'}^{1} exp(y'z)}$$
+$$P(y) = \sigma((2y - 1)z)$$
+在统计学中基于指数和规范化的概率分布是很常见的。我们会称这样定义了一个面向二进制变量的分布为$logit$。
+
+在对数空间中这种用于预测概率的方法很自然地就会使用最大似然学习。因为损失函数采用如下形式：  
+$$-\log P(y | x)$$
+损失函数中的对数抵消了sigmoid中的指数。如果不这样，sigmoid的饱和性就是阻止基于梯度的学习向前进行。由Sigmoid参数化的Bernoulli分布可以使用如下形式的针对最大似然学习的损失函数：  
+$$J(\theta) = - \log P(y | x)$$
+$$\qquad \qquad =- \log \sigma((2y - 1)z)$$
+$$\qquad =\zeta((1 - 2y)z)$$
+
+这样我们就使用softplus重写了损失函数，就可以发现就有当$(1-2y)z$非常负的时候函数才会趋于饱和。这种情况只会发生在模型已经有正确答案时。当$z$得到错误的符号时，softplus的传参$(1-2y)z$就是简化为$|z|$。这时随着$|z|$变大，softplus函数就是趋向于简单地返回$|z|$。相对于$z$的导数就会趋向于$sign(z)$。所以在错误的$z$的情况下，softplus函数也不会收缩梯度。这个特性是很重要的，因为这样就能快速地纠正错误的$z$。  
+
+如果我们使用其他的损失函数，那么损失就会在$\sigma(z)$饱和时也趋于饱和。对于sigmoid函数而言，当$z$变得很负或者很正时，函数的梯度就会趋于0。正是这个原因，训练sigmoid输出单元时更倾向使用最大似然来学习。  
+
+在实际实现时，为了避免数值计算的问题，我们最好将负对数似然率作为$z$的函数，而不是$\hat{y}=\sigma(z)$的函数。如果sigmoid函数下溢出为0时，后者就会产生一个负无穷大的值。  
+
+##### 针对多项式分布的Softmax单元
+如果能够希望表示面向有$n$种取值的离散变量的概率分布，那么我们就可以使用softmax函数。这个函数可以认为是sigmoid函数的泛化。通常我们会使用softmax函数作为一个分类器的输出，来表示针对$n$种不同类别的概率分布。较少情况下也会在模型内部使用softmax。这时主要是用它来对某个内部变量的$n$种选项做出选择。  
+
+所以我们需要产生一个向量$\hat{y}$，其中$\hat{y_i} = P(y=i|x)$。对于这个向量中的每个元素不只是要求在0-1之间，而且所有元素的总和要等于1。这样才代表一个有效的概率分布。首先我们先用一个线性层来预测非规范化对数概率:  
+$$z=W^Th + b$$
+其中$z_i = \log \hat{P}(y=i|x)$。然后softmax函数就可以指数化和规范化$z$来获得想要的$\hat{y}$。下面就是正式的softmax函数:
+$$softmax(z)_i=\frac{exp(z_i)}{\sum_{j} exp(z_j)}$$
+
+与logistic sigmoid函数一样，由于使用了指数函数，当将softmax作为输出单元时使用最大对数似然率就可以获得较好的训练性能。在这种情况下，我们就希望最大化$\log P(y=i; z) = \log softmax(z)_i$。而它的对数形式如下：
+$$\log softmax(z)_i = z_i - \log \sum_j exp(z_j)$$
+上述等式表明输入$z_i$对损失函数有直接的贡献。因为这项不会饱和,所以第二项$exp(z_i)$的梯度在变得很小时，这个学习仍然能继续进行。当最大化对数似然时，需要尽量增大第一项和减少第二项。在直觉上我们可以认为$\log \sum_j exp(z_j)$近似可以使用$\max_j z_j$来估计。如果正确的分类已经是softmax中最大的输出，那么$-z_i$就会被$\log \sum_j exp(z_j) \approx  max_j z_j=z_i$抵消掉。这个样本就会对最后的训练成本基本没有什么影响，而训练只会由被错误分类的样本所影响。  
+
+
+
 
 # Reference
 [1] [RBF核函数](http://baike.baidu.com/link?url=P35OBfXNjmZEysUJFLmelk_UjnR9Vu7hwybcCJrevqNkSe5gUufN8Hb8M8pxBuFpS9K6ljlS_wvJoHEYjsKieqtlOnit4gJVkU_45nDE4xH6KOdw6fyDGDDn20E1deuG6jweic_IeeAVQZv0BD4W__):   
@@ -116,5 +145,5 @@ $$\hat{y}=\sigma(w^Th+b)$$
 [4] [交叉熵损失函数](http://blog.csdn.net/u012162613/article/details/44239919): $C=-\frac{1}{n} \sum_{x} [y\ln a + (1-y)\ln(1 - a)]$将损失函数的梯度由依赖于目标函数$\sigma(x)$的梯度转成依赖于预测的误差$\sigma(x) - y$。这样就使得误差大的时候更新的比较块，误差小的时候更新慢。对数似然函数长用来作为softmax回归的损失函数。如果使使用sigmoid函数，那么就采用交叉熵损失函数。而在二类别时最大对数似然损失函数可以化简为交叉熵损失函数的形式。  
 [5] [neural networks and deep learning](http://neuralnetworksanddeeplearning.com/)  
 [6] 平均绝对误差: 统计学上用于评价预测值与真实值的接近程度。$$MAE=\frac{1}{n} \sum_{i=1}^n \vert f_i - y_i\vert $$  
-[7] 
+[7] [Logit](https://en.wikipedia.org/wiki/Logit): [logit in reddit](https://www.reddit.com/r/MachineLearning/comments/37ardy/softmax_vs_sigmoid_for_output_of_a_neural_network/)，
 
