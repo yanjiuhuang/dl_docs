@@ -135,6 +135,34 @@ $$softmax(z)_i=\frac{exp(z_i)}{\sum_{j} exp(z_j)}$$
 $$\log softmax(z)_i = z_i - \log \sum_j exp(z_j)$$
 上述等式表明输入$z_i$对损失函数有直接的贡献。因为这项不会饱和,所以第二项$exp(z_i)$的梯度在变得很小时，这个学习仍然能继续进行。当最大化对数似然时，需要尽量增大第一项和减少第二项。在直觉上我们可以认为$\log \sum_j exp(z_j)$近似可以使用$\max_j z_j$来估计。如果正确的分类已经是softmax中最大的输出，那么$-z_i$就会被$\log \sum_j exp(z_j) \approx  max_j z_j=z_i$抵消掉。这个样本就会对最后的训练成本基本没有什么影响，而训练只会由被错误分类的样本所影响。  
 
+上面只讨论了一个单一的样本。整体来说，非规范化的最大似然率将驱动模型去学习准确预测训练集中观察标记数据的参数：  
+
+$$softmax(z(x; \theta))_i \approx \frac{\sum_{j=1}^{m} 1_{y^{(j)}=i,x^{(j)}=x}}{\sum_{j=1}^x 1_{x^{(j)}=x}}$$
+
+因为最大似然率是一个一致性估计子，只要模型族能够表示训练集分布，那么我们就能够对多项式分布做出准确地预测。在实践中，有限的模型容量和不够完美的优化就意味着模型只能去估计接近这些分类。  
+
+许多除了对数最大似然之外的目标函数与softmax单元结合在一起时都没有很好的性能。特别是对于那些没有使用log来抵消指数exp的目标函数。因为在exp的值为较大负值时，训练的梯度就会消失。特别是将平方误差作为损失函数，当模型做出高可信的错误预测时，很难再训练模型来修正这个错误。为了理解其他损失函数失败的原因，我们需要检视一下softmax函数本身。  
+
+与sigmoid函数一样，softmax激活也是会饱和的。只有一个输出的sigmoid函数在正负值都很大时都会饱和。softmax函数有多个输出。当输出变量之间差距很大时，输出就会趋于饱和。当softmax函数饱和时，许多损失函数也会饱和。除非它们能够反转这个饱和的激活函数。由于softmax函数会对数量变量之间的不同，那么如果对所有的输入变量加上相同的标量，那么softmax函数的数据就会保持不变:  
+
+$$softmax(z) = softmax(z + c)$$
+
+使用这个性质，我们可以推导出一个稳定的变式:  
+$$softmax(z) = softmax(z - \max_i z_i)$$
+
+这样我们就可以避免出现数值计算的误差。因为当$z$是一个超大的负值时，很容易出现下溢的问题。从上面等式可以看出，softmax函数的输入变量统一都减去$\max_i z_i$的偏移量。  
+
+当对应的输入是最大值($z_i = \max_i z_i$)以及远大于其他输入时，softmax函数的输出就会饱和于1。当对应的输入不是最大值并且最大值远大于它时，softmax函数的输出就会饱和于0。这是与sigmoid函数相似的通用性质。所以如果损失函数没有进行相应的补偿，那么就会给学习带来很大的难度。  
+
+softmax的参数$z$可以有两种方式来产生。最为普遍的做法就是由网络的上一层来产生$z$中的每一个元素，例如之前描述使用线性层产生的结果$z=W^T h + b$。虽然很直接，但是这个方法实际上过参数化了目标分布。因为$n$个输出的和必需为1，这就意味着我们只需要$n - 1$个参数。第n个输出值只需要通过1减去前面n-1个值即可。我们可以要求最后一个元素为0。实际上在sigmoid函数来学习Bernoulli分布时就假定了$z_n=0$。 n个参数和n-1个参数的两个方法都可以用来学习同一个概率分布集合，只是会有不同的学习动态(learning dynamics)。在实践中两个方法基本没有什么区别，只是过参数化的版本更易于实现。  
+
+从神经科学的角度来看，softmax创建了一种让参与的单元相互竞争的形式：由于总和为1，一个输出值的增加，就要减少其他的值。这个类似于神经科学中的侧抑制(lateral inhibition)。极端情况下就是winner-take-all。  
+
+这里可能需要解释一下softmax这个名字。实际上它更接近与argmax，而不是max函数。其中的soft表示softmax函数是连续可微的，而argmax使用了one-hot向量来表示结果，所以不是连续和可微的。某种程度上我们可以认为softmax是一个软化的argmax函数。maximum函数对应的软化函数就是$softmax(z)^Tz$。所以我们更应该把softmax叫做'softargmax'。  
+
+##### 其他输出单元类型
+
+
 
 
 
@@ -145,5 +173,8 @@ $$\log softmax(z)_i = z_i - \log \sum_j exp(z_j)$$
 [4] [交叉熵损失函数](http://blog.csdn.net/u012162613/article/details/44239919): $C=-\frac{1}{n} \sum_{x} [y\ln a + (1-y)\ln(1 - a)]$将损失函数的梯度由依赖于目标函数$\sigma(x)$的梯度转成依赖于预测的误差$\sigma(x) - y$。这样就使得误差大的时候更新的比较块，误差小的时候更新慢。对数似然函数长用来作为softmax回归的损失函数。如果使使用sigmoid函数，那么就采用交叉熵损失函数。而在二类别时最大对数似然损失函数可以化简为交叉熵损失函数的形式。  
 [5] [neural networks and deep learning](http://neuralnetworksanddeeplearning.com/)  
 [6] 平均绝对误差: 统计学上用于评价预测值与真实值的接近程度。$$MAE=\frac{1}{n} \sum_{i=1}^n \vert f_i - y_i\vert $$  
-[7] [Logit](https://en.wikipedia.org/wiki/Logit): [logit in reddit](https://www.reddit.com/r/MachineLearning/comments/37ardy/softmax_vs_sigmoid_for_output_of_a_neural_network/)，
+[7] [Logit](https://en.wikipedia.org/wiki/Logit): [logit in reddit](https://www.reddit.com/r/MachineLearning/comments/37ardy/softmax_vs_sigmoid_for_output_of_a_neural_network/)，  
+[8] [Consistent Estimator](https://en.wikipedia.org/wiki/Consistent_estimator): 在统计学中，一个一致性估计子(或者asymptotically consistent estimator)表明随着数据样本的无限增加，估计的结果序列会概率收敛到$\theta_0$。这就意味着估计结果的分布会越来越接近真实的值。  
+[9] [overparametrize 过参数化](https://www.douban.com/note/92521266/)：可以使用dependency of parameters来衡量overparametrize的程度。  
+[10] [one-hot](https://en.wikipedia.org/wiki/One-hot): 一位热码，独热码
 
